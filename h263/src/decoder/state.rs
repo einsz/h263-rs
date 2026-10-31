@@ -184,6 +184,14 @@ impl H263State {
                 vec![DecodedDctBlock::Zero; level_dimensions.0 * level_dimensions.1 / 4 / 64];
 
             loop {
+                // The picture ends with its last macroblock. What follows
+                // isn't part of it: some encoders pad Sorenson pictures with
+                // a zero byte, which would otherwise be read as an invalid
+                // macroblock header.
+                if macroblock_types.len() >= mb_per_line * mb_height {
+                    break;
+                }
+
                 let mb = decode_macroblock(
                     reader,
                     next_decoded_picture.as_header(),
@@ -479,5 +487,31 @@ impl H263State {
 
             Ok(())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A 16x16 Sorenson Spark I-frame of a flat color (one macroblock),
+    /// encoded by FFmpeg.
+    const SORENSON_FRAME: [u8; 14] = [
+        0x00, 0x00, 0x84, 0x00, 0x08, 0x08, 0x15, 0x26, 0xe0, 0xe0, 0xe0, 0xe1, 0x50, 0xb0,
+    ];
+
+    #[test]
+    fn picture_ends_with_last_macroblock() {
+        for trailing in [&[][..], &[0x00], &[0x00, 0x00]] {
+            let mut data = SORENSON_FRAME.to_vec();
+            data.extend_from_slice(trailing);
+
+            let mut state = H263State::new(DecoderOption::SORENSON_SPARK_BITSTREAM);
+            let mut reader = H263Reader::from_source(&data[..]);
+            state.decode_next_picture(&mut reader).unwrap_or_else(|e| {
+                panic!("{} trailing bytes: {e:?}", trailing.len());
+            });
+            assert!(state.get_last_picture().is_some());
+        }
     }
 }
