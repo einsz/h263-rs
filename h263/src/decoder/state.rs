@@ -183,12 +183,14 @@ impl H263State {
             let mut chroma_r_levels =
                 vec![DecodedDctBlock::Zero; level_dimensions.0 * level_dimensions.1 / 4 / 64];
 
+            let is_sorenson = self.is_sorenson();
             loop {
-                // The picture ends with its last macroblock. What follows
-                // isn't part of it: some encoders pad Sorenson pictures with
-                // a zero byte, which would otherwise be read as an invalid
-                // macroblock header.
-                if macroblock_types.len() >= mb_per_line * mb_height {
+                // A Sorenson picture ends with its last macroblock. What
+                // follows isn't part of it: some encoders pad Sorenson
+                // pictures with a zero byte, which would otherwise be read as
+                // an invalid macroblock header. Standard H.263 can have
+                // macroblock stuffing there, which the loop consumes.
+                if is_sorenson && macroblock_types.len() >= mb_per_line * mb_height {
                     break;
                 }
 
